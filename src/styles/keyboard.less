@@ -1,0 +1,174 @@
+// ─────────────────────────────────────────────────────────────
+// 自绘键盘（移动端）：不调起系统输入法，全部按键由模板的槽位种类决定
+//
+// 靶尺寸按移动端下限走：按键高 44px、行间距 6px，整块键盘高度控制在 3 行 ~ 200px 内，
+// 免得在 667px 高的机型上把牌面挤出可视区。
+// 按键用 flex: 1 平摊，最少 5 列时自动变宽，不再靠固定列数硬排。
+// ─────────────────────────────────────────────────────────────
+
+.rlp-kbd {
+    flex: none;
+    padding: 4px 6px 8px;
+    background: var(--rlp-kbd-bg);
+    border-top: 1px solid var(--rlp-line);
+}
+
+.rlp-kbd__row {
+    display: flex;
+    gap: 6px;
+    justify-content: center;
+    margin-bottom: 6px;
+}
+
+.rlp-kbd__key {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 44px;
+    max-width: 60px;
+    min-width: 0;
+    padding: 0;
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    color: var(--rlp-text);
+    background: var(--rlp-bg-raise);
+    border: 1px solid var(--rlp-line);
+    border-radius: 6px;
+    box-shadow: var(--rlp-key-shadow);
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+}
+
+// 按住态：移动端没有 hover，只给 active，且不做位移（位移会让手指滑偏）
+.rlp-kbd__key:active {
+    color: var(--rlp-accent);
+    background: color-mix(in srgb, var(--rlp-accent) 12%, var(--rlp-bg));
+    border-color: var(--rlp-accent);
+}
+
+// 当前键盘里不可用的键（如大型新能源只有 D/F 可选时灰掉其余字母）
+.rlp-kbd__key[disabled] {
+    color: var(--rlp-sub);
+    opacity: 0.4;
+}
+
+// 汉字宫格：字体不需要那么粗，但字号要小一点才不挤
+.rlp-kbd--grid .rlp-kbd__key {
+    max-width: none;
+    font-size: 17px;
+    font-weight: 500;
+}
+
+// 宫格行按最大列数切格，最后一行凑不满也照旧一格一格占
+// 仍用 flex 平摊的话，31 个省份收尾那 3 个键会被拉到每格三分之一宽，
+// 同一块键盘上按键大小就齐不了了
+.rlp-kbd--grid .rlp-kbd__row {
+    display: grid;
+    grid-template-columns: repeat(var(--rlp-kbd-cols, 7), 1fr);
+}
+
+// 键盘体：左边字符区，右边一竖栏放功能键
+// 右栏跟字符区同高（align-items: stretch），多出来的高度由「完成」吃掉：
+// 不然栏顶会空出一块，看着像键盘缺了个角，也轮不到字符键去撑那块地方
+.rlp-kbd__body {
+    display: flex;
+    gap: 6px;
+    align-items: stretch;
+}
+
+.rlp-kbd__keys {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: flex-end; // 只有一排的选项条键盘贴底，跟右栏删除齐平
+    min-width: 0;
+
+    .rlp-kbd__row:last-child {
+        margin-bottom: 0;
+    }
+}
+
+// 右栏：完成在上、删除在右下，两枚都贴底堆叠
+.rlp-kbd__side {
+    display: flex;
+    flex: none;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 6px;
+    width: 16%;
+    min-width: 44px;
+    max-width: 62px;
+}
+
+// 删除高度等于两个字符键加一道行距，不跟着行数越长越粗（拉成一整条反而更容易误触）
+// 选择器多套一层类名是为了压住上面 .rlp-kbd--grid 那条的字号，省份键盘上功能键不该跟着缩
+.rlp-kbd__key.rlp-kbd__key--del {
+    flex: none;
+    width: 100%;
+    height: 94px; // 44 × 2 + 行距 6
+    max-width: none;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--rlp-text);
+    background: var(--rlp-cell-bg);
+}
+
+// 完成是主操作，整栏里唯一实色；没填满时置灰但仍可点（点了给一句「还差几位」）
+// 高度跟着右栏剩余空间撑满，键盘右上角不留空；矮键盘上仍保住 48px 好按
+.rlp-kbd__key.rlp-kbd__key--ok {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 48px;
+    max-width: none;
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--rlp-accent);
+    border-color: var(--rlp-accent);
+}
+
+.rlp-kbd__key.rlp-kbd__key--ok:active {
+    color: #fff;
+    background: color-mix(in srgb, var(--rlp-accent) 82%, #000);
+    border-color: var(--rlp-accent);
+}
+
+.rlp-kbd__key.rlp-kbd__key--ok[aria-disabled='true'] {
+    color: var(--rlp-sub);
+    background: var(--rlp-cell-bg);
+    border-color: var(--rlp-line);
+}
+
+// 只有两三个选项的槽位（港/澳、X/S）：不铺满整块键盘，做成一排选择条
+.rlp-kbd__chips {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    padding: 2px 8px 8px;
+}
+
+.rlp-kbd__chip {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    height: 42px;
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--rlp-text);
+    background: var(--rlp-bg-raise);
+    border: 1px solid var(--rlp-line);
+    border-radius: 8px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+}
+
+.rlp-kbd__chip:active {
+    border-color: var(--rlp-accent);
+}

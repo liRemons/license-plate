@@ -1,0 +1,292 @@
+// ─────────────────────────────────────────────────────────────
+// 号牌展示徽标
+//
+// 尺寸不写死像素，全部由 mm 规格变量按比例推导：
+//   --rlp-scale = 渲染高度 / 外廓高(mm)，其余尺寸 = scale × 对应 mm 数
+// 业务方只改 --rlp-height 就能整体等比缩放，改 --rlp-width-mm / --rlp-char-mm 可单独微调规格。
+//
+// 配色与框线依据 GA 36-2018 表 1 的「底-字-框线」：
+//   蓝底白字白框线 / 黄底黑字黑框线 / 渐变绿底黑字黑框线 / 黄绿双拼底黑字黑框线
+//   白底黑字红标识黑框线（警、应急）/ 黑底白字白框线（使领馆、港澳）
+// 标准只给色品坐标与漆膜色号（§7.8 按 GB/T 3181 / 3978 / 3979 度量），不给 sRGB，
+// 所以下面这组十六进制是把标准色往屏幕上映的近似值，不是标准原文数值。
+//
+// 每种牌的配色抽成 mixin，.rlp-plate 与 .rlp-swatch 共用一份，避免两处各写一套色值。
+// ─────────────────────────────────────────────────────────────
+
+// 号牌专用字体：字库随包发布（源文件 src/assets，构建后由打包工具重写地址），
+// 引了样式就能用，业务方不必再自己声明一遍。
+// 要改走远程字库时传 cdn（或自托管地址 fontUrl），运行时会注入一条同名声明把这条整体替掉。
+@font-face {
+    font-family: 'LicensePlate';
+    src: url('../assets/license-plate.woff2') format('woff2'), url('../assets/license-plate.woff') format('woff'),
+        url('../assets/license-plate.ttf') format('truetype');
+    // 字库只有一套字形，标成 700 让牌面的 font-weight: 700 直接命中，
+    // 否则浏览器会对真字符合成加粗，把笔画糊掉
+    font-weight: 700;
+    font-style: normal;
+    // 字库近 1MB，先拿系统 DIN 顶着渲染，别等字库下载完前牌面是空白
+    font-display: swap;
+}
+
+// 新能源绿（大小型共用）：GA 666-2018 的解读里新能源绿比漆膜绿更浅、更接近碧绿色，
+// 这里取偏黄绿一档的值，让相邻的黄底不至于一个荧光一个深绿
+@rlp-ne-green: #5cb451;
+// 大型新能源的黄底：真牌是反光黄，UI 上压掉荧光感
+@rlp-large-yellow: #f2ca4c;
+@rlp-line-black: rgba(0, 0, 0, 0.55);
+@rlp-line-white: rgba(255, 255, 255, 0.8);
+@rlp-mark-red: #d93026;
+@rlp-head-red: #c8202a;
+
+.kind-blue() {
+    color: #fff;
+    background: #1f4fa0;
+    --rlp-line-color: @rlp-line-white;
+}
+
+.kind-yellow() {
+    color: #1a1a1a;
+    background: #f7d117;
+    --rlp-line-color: @rlp-line-black;
+}
+
+.kind-ne-small() {
+    color: #111;
+    background: linear-gradient(180deg, #eaf6dc 0%, @rlp-ne-green 100%);
+    --rlp-line-color: @rlp-line-black;
+}
+
+.kind-ne-large() {
+    color: #111;
+    background: @rlp-large-yellow;
+    --rlp-line-color: @rlp-line-black;
+}
+
+.kind-white-base() {
+    color: #1a1a1a;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    --rlp-line-color: @rlp-line-black;
+}
+
+.kind-military() {
+    color: @rlp-head-red;
+    background: #fff;
+    border: 1px solid rgba(0, 0, 0, 0.18);
+    --rlp-line-color: @rlp-line-black;
+}
+
+.kind-diplomatic() {
+    color: #fff;
+    background: #161616;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    --rlp-line-color: @rlp-line-white;
+}
+
+.rlp-plate {
+    // 渲染高度，对应标准 140mm
+    --rlp-height: 48px;
+    --rlp-width-mm: 440;
+    --rlp-height-mm: 140;
+    // 字符高约 70mm（标准正文数值各来源冲突，按笔画宽 10mm ≈ 字高 1/7 推导）
+    --rlp-char-mm: 70;
+    // 字符间隙 12mm
+    --rlp-char-gap-mm: 12;
+    // 发牌机关代号与序号之间（放分隔点处）间隙 34mm
+    --rlp-dot-gap-mm: 34;
+    // 分隔点点径
+    --rlp-dot-mm: 11;
+    // 框线距牌边约 10mm
+    --rlp-inset-mm: 10;
+    // 字符区外的留白（标准只规定「不小于 10mm」，取 14mm）
+    --rlp-edge-mm: 14;
+    // 圆角：标准未给明文数值，纯视觉值
+    --rlp-radius: 8px;
+    --rlp-line-color: transparent;
+    // 专用字体缺失时逐级回退到 DIN 系；--rlp-font-family 可由使用方（或传入 fontUrl 时由包自己）改写
+    --rlp-font: var(--rlp-font-family, 'LicensePlate'), 'Bahnschrift', 'DIN Alternate', 'Arial Narrow', Arial, sans-serif;
+
+    --rlp-scale: calc(var(--rlp-height) / var(--rlp-height-mm));
+
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: var(--rlp-height);
+    // 下限按外廓比例算，内容更宽时自然撑开（不同字体的汉字宽度差异比数字大得多）
+    min-width: calc(var(--rlp-scale) * var(--rlp-width-mm));
+    padding: 0 calc(var(--rlp-scale) * var(--rlp-edge-mm));
+    font-family: var(--rlp-font);
+    font-size: calc(var(--rlp-scale) * var(--rlp-char-mm));
+    font-weight: 700;
+    letter-spacing: calc(var(--rlp-scale) * var(--rlp-char-gap-mm));
+    line-height: 1;
+    white-space: nowrap;
+    border-radius: var(--rlp-radius);
+    border: 1px solid transparent;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+    font-variant-numeric: tabular-nums;
+    color: #1a1a1a;
+    background: #fff;
+    // 号牌是实体物件：深色模式下不跟主题变暗，靠框线与外描边保证边界
+}
+
+// 内圈框线：标准明文规定的「黑框线 / 白框线」
+.rlp-plate::after {
+    content: '';
+    position: absolute;
+    inset: calc(var(--rlp-scale) * var(--rlp-inset-mm));
+    border: 1px solid var(--rlp-line-color);
+    border-radius: calc(var(--rlp-radius) - 3px);
+    pointer-events: none;
+}
+
+// 新能源牌面比燃油牌长 40mm（480 vs 440，标准明文）
+.rlp-plate[data-kind='newEnergySmall'],
+.rlp-plate[data-kind='newEnergyLarge'] {
+    --rlp-width-mm: 480;
+}
+
+.rlp-plate[data-kind='blue'] {
+    .kind-blue();
+}
+
+.rlp-plate[data-kind='yellow'] {
+    .kind-yellow();
+}
+
+// 小型新能源：渐变绿（上浅下深、垂直方向）
+.rlp-plate[data-kind='newEnergySmall'] {
+    .kind-ne-small();
+}
+
+// 大型新能源：黄绿双拼，左右分（不是上下分）——
+// 左侧黄区放省份简称 + 发牌机关代号 + 分隔点，右侧绿区只放序号
+.rlp-plate[data-kind='newEnergyLarge'] {
+    .kind-ne-large();
+
+    padding: 0;
+}
+
+.rlp-plate-yellow {
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 calc(var(--rlp-scale) * var(--rlp-char-gap-mm)) 0 calc(var(--rlp-scale) * var(--rlp-edge-mm));
+}
+
+// 绿区四周留一条黄边：实体牌是黄底上盖一块绿，不是整面平铺
+.rlp-plate-green {
+    align-self: stretch;
+    display: inline-flex;
+    align-items: center;
+    margin: calc(var(--rlp-scale) * var(--rlp-inset-mm) / 3) calc(var(--rlp-scale) * var(--rlp-inset-mm) / 3)
+        calc(var(--rlp-scale) * var(--rlp-inset-mm) / 3) 0;
+    padding: 0 calc(var(--rlp-scale) * var(--rlp-edge-mm)) 0 calc(var(--rlp-scale) * var(--rlp-char-gap-mm));
+    background: @rlp-ne-green;
+    border-radius: 0 calc(var(--rlp-radius) - 3px) calc(var(--rlp-radius) - 3px) 0;
+}
+
+// 分隔点：一律 CSS 绘制，不用文本里的「·」——
+// 字符中间点不保证垂直居中，且专用字体缺该字形时会逐字符回退，点的大小会跟其它字符不一致
+.rlp-plate-dot {
+    flex: none;
+    width: calc(var(--rlp-scale) * var(--rlp-dot-mm));
+    height: calc(var(--rlp-scale) * var(--rlp-dot-mm));
+    margin: 0 calc((var(--rlp-scale) * var(--rlp-dot-gap-mm) - var(--rlp-scale) * var(--rlp-dot-mm)) / 2);
+    border-radius: 50%;
+    background: currentColor;
+}
+
+// 使领馆 / 港澳入出境：黑底白字白框线
+.rlp-plate[data-kind='diplomatic'] {
+    .kind-diplomatic();
+}
+
+// 警车 / 应急救援：白底黑字黑框线 + 红色标识
+.rlp-plate[data-kind='police'],
+.rlp-plate[data-kind='emergency'] {
+    .kind-white-base();
+}
+
+// 军车：白底红字（框线标准未查见明文，按黑框线处理）
+.rlp-plate[data-kind='military'] {
+    .kind-military();
+}
+
+// 武警：白底黑字，「WJ」字头红字
+.rlp-plate[data-kind='armedPolice'] {
+    .kind-white-base();
+}
+
+.rlp-plate[data-kind='armedPolice'] .rlp-plate-wj {
+    color: @rlp-head-red;
+}
+
+// 红色标识字：警 / 学 / 挂 / 应急
+// 注：使、领 二字着色各来源冲突（旧版标准条文写红，百科词条写白），这里保持与主字同色不上红
+.rlp-plate[data-kind='yellow'] .rlp-plate-mark,
+.rlp-plate[data-kind='police'] .rlp-plate-mark,
+.rlp-plate[data-kind='emergency'] .rlp-plate-mark {
+    color: @rlp-mark-red;
+}
+
+// 未识别：跟随宿主文字与背景，只保留一格边界，不猜颜色也不画框线
+// 背景取宿主的外壳变量（在 .rlp-trigger / .rlp-sheet 里会命中），单独放在页面上时用亮色兜底
+.rlp-plate[data-kind='unknown'] {
+    color: inherit;
+    background: var(--rlp-cell-bg, rgba(0, 0, 0, 0.04));
+    border: 1px dashed var(--rlp-line, rgba(0, 0, 0, 0.2));
+    box-shadow: none;
+    --rlp-line-color: transparent;
+}
+
+// ── 色卡：类型选择列表里放不下整块牌，只抽「底色 + 框线」这一层信息 ──
+.rlp-swatch {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 52px;
+    height: 16px;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    box-shadow: inset 0 0 0 1px var(--rlp-line-color);
+}
+
+.rlp-swatch[data-kind='blue'] {
+    .kind-blue();
+}
+
+.rlp-swatch[data-kind='yellow'] {
+    .kind-yellow();
+}
+
+.rlp-swatch[data-kind='newEnergySmall'] {
+    .kind-ne-small();
+}
+
+// 黄绿双拼在 52px 宽的色卡上只能示意：左 1/3 黄右 2/3 绿，跟真牌分区方向一致
+.rlp-swatch[data-kind='newEnergyLarge'] {
+    .kind-ne-large();
+
+    background: linear-gradient(90deg, @rlp-large-yellow 0 33%, @rlp-ne-green 33% 100%);
+}
+
+.rlp-swatch[data-kind='police'],
+.rlp-swatch[data-kind='emergency'] {
+    .kind-white-base();
+}
+
+.rlp-swatch[data-kind='military'] {
+    .kind-military();
+}
+
+.rlp-swatch[data-kind='armedPolice'] {
+    .kind-white-base();
+}
+
+.rlp-swatch[data-kind='diplomatic'] {
+    .kind-diplomatic();
+}

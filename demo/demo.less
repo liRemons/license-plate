@@ -1,0 +1,148 @@
+// demo 页面自身的外壳样式，与被测组件无关
+// 移动端优先：整页限宽 420px 居中，桌面上看也就是一台手机的宽度
+.demo {
+    box-sizing: border-box;
+    max-width: 420px;
+    margin: 0 auto;
+    padding: 16px 14px calc(40px + env(safe-area-inset-bottom));
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #1a1a1a;
+}
+
+.demo__title {
+    margin: 0 0 4px;
+    font-size: 20px;
+}
+
+.demo__desc {
+    margin: 0 0 16px;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.5);
+}
+
+.demo__card {
+    padding: 14px;
+    margin-bottom: 14px;
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.demo__h {
+    margin: 0 0 10px;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.demo__tip {
+    margin: 8px 0 0;
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.45);
+}
+
+.demo__muted {
+    font-size: 12px;
+    color: rgba(0, 0, 0, 0.45);
+}
+
+.demo__group {
+    margin-bottom: 12px;
+}
+
+.demo__row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.demo__name {
+    display: flex;
+    flex-direction: column;
+    font-size: 13px;
+}
+
+.demo__name em {
+    font-size: 11px;
+    font-style: normal;
+    color: rgba(0, 0, 0, 0.4);
+}
+
+.demo__logs {
+    padding-left: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.demo__logs li {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 4px 0;
+    font-size: 12px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+@media (prefers-color-scheme: dark) {
+    .demo {
+        .demo-dark();
+    }
+}
+
+// 主题开关：与包内的 .rlp-dark 入口对应用户手动切黑的情境
+.demo--dark {
+    .demo-dark();
+}
+
+// 开关行：主题与字库两个开关并排
+.demo__switches {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+
+.demo__switch {
+    display: inline-flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 14px;
+    margin: 0;
+    font-family: inherit;
+    font-size: 13px;
+    color: inherit;
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 999px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+}
+
+.demo--dark .demo__switch,
+.demo__switch:active {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.demo-dark() {
+    color: rgba(255, 255, 255, 0.9);
+    background: #141414;
+
+    .demo__card {
+        background: #1f1f1f;
+    }
+
+    .demo__desc,
+    .demo__tip,
+    .demo__muted,
+    .demo__name em {
+        color: rgba(255, 255, 255, 0.5);
+    }
+
+    .demo__row,
+    .demo__logs li {
+        border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+}

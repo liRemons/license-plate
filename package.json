@@ -1,0 +1,68 @@
+{
+  "name": "remons-license-plate",
+  "version": "0.0.1-beta.0",
+  "type": "module",
+  "description": "中国机动车号牌 React 组件包：号牌种类识别、按 GA 36-2018 规格换算的展示徽标，以及移动端专用号牌输入器（自绘键盘，不调起系统输入法）",
+  "main": "dist/index.cjs",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "style": "dist/index.css",
+  "sideEffects": [
+    "*.css",
+    "*.less"
+  ],
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./style.css": "./dist/index.css",
+    "./fonts/*": "./dist/fonts/*",
+    "./core": {
+      "types": "./dist/core/index.d.ts",
+      "import": "./dist/core.js",
+      "require": "./dist/core.cjs"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build --mode lib && node scripts/post-build.mjs",
+    "build:demo": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm run build"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@vitejs/plugin-react": "^6.1.0",
+    "less": "^4.9.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "~6.0.2",
+    "vite": "^8.2.2",
+    "vite-plugin-dts": "^5.1.0"
+  },
+  "keywords": [
+    "react",
+    "license-plate",
+    "china-plate",
+    "GA36",
+    "机动车号牌",
+    "车牌",
+    "keyboard"
+  ],
+  "license": "MIT"
+}

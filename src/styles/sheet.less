@@ -1,0 +1,579 @@
+// ─────────────────────────────────────────────────────────────
+// 输入器（移动端专用）：触发字段 → 底部抽屉 → 类型选择 / 牌面格 + 键盘
+//
+// 只按移动端做：
+//   - 抽屉从底部升起，占位随内容，不居中小弹窗
+//   - 所有可点区域 ≥ 44px（iOS HIG / Material 触摸靶），按住即高亮
+//   - 底部留 env(safe-area-inset-bottom)，全面屏不被手势条压住
+//   - 禁掉系统长按选词、双击缩放、tap 灰块，交互全程像原生控件
+// 牌面本身（.rlp-plate）不吃主题，抽屉外壳吃 —— 深色模式下外壳变暗、号牌颜色不变
+// ─────────────────────────────────────────────────────────────
+
+// 外壳 token：触发字段与抽屉共用一套变量，深色模式只改这一处
+// 注意 token 必须同时挂在 .rlp-trigger 和 .rlp-sheet 上 —— 两者是兄弟节点，
+// 只在 .rlp-trigger 上声明的话抽屉那棵树取不到变量，浅色下背景会直接透明
+.rlp-trigger,
+.rlp-sheet {
+    --rlp-accent: #1677ff;
+    --rlp-line: rgba(0, 0, 0, 0.12);
+    --rlp-text: #1a1a1a;
+    --rlp-sub: rgba(0, 0, 0, 0.45);
+    --rlp-bg: #fff;
+    // 键盘按键这类需要浮起来的面
+    --rlp-bg-raise: #fff;
+    --rlp-cell-bg: rgba(0, 0, 0, 0.03);
+    --rlp-kbd-bg: rgba(0, 0, 0, 0.035);
+    --rlp-mark: #d93026;
+    --rlp-key-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
+    --rlp-sheet-shadow: 0 -6px 24px rgba(0, 0, 0, 0.16);
+}
+
+.rlp-trigger {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 48px;
+    margin: 0;
+    padding: 6px 10px;
+    text-align: left;
+    font-family: inherit;
+    color: var(--rlp-text);
+    background: var(--rlp-bg);
+    border: 1px solid var(--rlp-line);
+    border-radius: 10px;
+    // 移动端：去掉 webkit 点击灰块，禁双击缩放与长按选词
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.rlp-trigger:active {
+    border-color: var(--rlp-accent);
+}
+
+.rlp-trigger[disabled] {
+    opacity: 0.5;
+}
+
+// 未输入时的占位提示
+.rlp-trigger__hint {
+    font-size: 15px;
+    color: var(--rlp-sub);
+}
+
+.rlp-trigger__value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 15px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+// 右侧「证件类型」小标签，让业务侧一眼看到当前判定的类型
+.rlp-trigger__tag {
+    flex: none;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: var(--rlp-sub);
+    border: 1px solid var(--rlp-line);
+    border-radius: 999px;
+}
+
+// ── 遮罩 + 抽屉 ───────────────────────────────────────────────
+.rlp-mask {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    // 单纯半透在浅色页面上几乎压不住背板（白底叠 45% 黑仍能看清字），
+    // 所以一边加深底色，一边叠 backdrop-filter 把背板糊掉：只留形状不留信息
+    background: rgba(14, 15, 20, 0.55);
+    -webkit-backdrop-filter: blur(10px) saturate(1.2);
+    backdrop-filter: blur(10px) saturate(1.2);
+    animation: rlp-fade-in 0.2s ease-out;
+}
+
+// 不支持 backdrop-filter 的旧内核（iOS 17 以下的某些 webview）：底色再压深一档，
+// 不能让用户隔着抽屉读到底下的正文
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .rlp-mask {
+        background: rgba(14, 15, 20, 0.78);
+    }
+}
+
+.rlp-sheet {
+    position: fixed;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 1001;
+    box-sizing: border-box;
+    // 两屏高度都钉住，不让它跟着内容长：
+    // - 类型屏：搜索时结果从 16 项缩到 1 项，每敲一个字重排一次
+    // - 录入屏：省份宫格与混排序号各 5 行、字母 3 行、纯数字 2 行，跳一个格抽屉就高一下
+    // 抽屉是 bottom fixed，高度一变顶部整块牌面就上下抖。钉住后多出的高度
+    // 归中间滚动区，键行始终贴底，格子与完成按钮的位置一动不动。
+    // 600px 封顶是不让平板和桌面调试时拉出一大片空白。
+    height: 92vh; // 不支持 dvh / min() 的老 WebKit
+    height: min(92dvh, 600px);
+    padding-bottom: env(safe-area-inset-bottom);
+    overflow: hidden;
+    color: var(--rlp-text);
+    background: var(--rlp-bg);
+    border-radius: 16px 16px 0 0;
+    box-shadow: var(--rlp-sheet-shadow);
+    animation: rlp-slide-up 0.24s cubic-bezier(0.32, 0.72, 0, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+@keyframes rlp-fade-in {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes rlp-slide-up {
+    from {
+        transform: translateY(100%);
+    }
+    to {
+        transform: translateY(0);
+    }
+}
+
+// 深色 token：只改这一套变量，牌面（.rlp-plate / .rlp-swatch）不跟着变 ——
+// 号牌是实体物件，深蓝牌在深色背景下仍然是深蓝牌
+.rlp-dark-tokens() {
+    --rlp-line: rgba(255, 255, 255, 0.16);
+    --rlp-text: rgba(255, 255, 255, 0.92);
+    --rlp-sub: rgba(255, 255, 255, 0.45);
+    --rlp-bg: #1f1f1f;
+    --rlp-bg-raise: #2c2c2e;
+    --rlp-cell-bg: rgba(255, 255, 255, 0.07);
+    --rlp-kbd-bg: rgba(0, 0, 0, 0.32);
+    // 同一个红在深底上会被吃掉，提亮并往橙偏一点
+    --rlp-mark: #ff6a5e;
+    --rlp-accent: #3f8cff;
+    --rlp-key-shadow: none;
+    --rlp-sheet-shadow: 0 -6px 28px rgba(0, 0, 0, 0.6);
+}
+
+// 入口一：宿主自己切主题（网站用 class 切黑模式时，给包的外壳祖先加 .rlp-dark，
+// 或直接给 PlateInput 传 dark）
+.rlp-dark .rlp-trigger,
+.rlp-dark .rlp-sheet,
+.rlp-dark .rlp-mask,
+.rlp-trigger.rlp-dark,
+.rlp-sheet.rlp-dark,
+.rlp-mask.rlp-dark {
+    .rlp-dark-tokens();
+}
+
+.rlp-dark .rlp-mask,
+.rlp-mask.rlp-dark {
+    background: rgba(0, 0, 0, 0.68);
+}
+
+// 入口二：没加 .rlp-dark 时退到跟随系统
+@media (prefers-color-scheme: dark) {
+    .rlp-trigger,
+    .rlp-sheet {
+        .rlp-dark-tokens();
+    }
+
+    .rlp-mask {
+        background: rgba(0, 0, 0, 0.68);
+    }
+}
+
+.rlp-sheet__hd {
+    display: grid;
+    flex: none; // 抽屉是纵向 flex，头不被压矮才不会去挤键盘
+    // 左：次要操作（重选 / 清空） 中：类型名 右：完成
+    // 两侧 1fr 中间 auto，标题就总在正中间，不会因为左边按钮有无而左右跑
+    grid-template-columns: 1fr auto 1fr;
+    gap: 4px;
+    align-items: center;
+    padding: 12px 14px 8px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.rlp-sheet__acts {
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+}
+
+.rlp-sheet__title {
+    overflow: hidden;
+    text-align: center;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+// 清空从键盘搬到了这里：它一下毁掉整串，不该长在拇指天天扫过的按键区
+.rlp-sheet__clear {
+    height: 36px;
+    padding: 0 8px 0 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--rlp-sub);
+    background: none;
+    border: 0;
+    -webkit-tap-highlight-color: transparent;
+
+    &[disabled] {
+        color: color-mix(in srgb, var(--rlp-sub) 40%, transparent);
+    }
+}
+
+.rlp-sheet__close {
+    display: flex;
+    flex: none;
+    justify-self: end;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 36px;
+    margin: -6px -8px -6px 0;
+    font-size: 20px;
+    line-height: 1;
+    color: var(--rlp-sub);
+    background: none;
+    border: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+// 类型步骤里「返回重选」的文字按钮
+.rlp-sheet__back {
+    height: 36px;
+    padding: 0 8px 0 0;
+    margin-right: 4px;
+    font-size: 14px;
+    font-weight: 400;
+    color: var(--rlp-accent);
+    background: none;
+    border: 0;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.rlp-sheet__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    // iOS 惯性滚动
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+
+// ── 第一屏：类型选择（本地搜索 + 卡片）────────────────────────
+// 搜索框粘在滚动容器顶部：16 种类型要翻两三屏，滚下去了也得让人能改关键词
+.rlp-search {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 8px 14px 10px;
+    background: var(--rlp-bg);
+    border-bottom: 1px solid var(--rlp-line);
+}
+
+// 图标与清除按钮都绝对定位到框内侧，输入框才能撑满整行；
+// 两者占的是固定内边距，所以输入框宽度不随“有没有输入”变
+.rlp-search__box {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.rlp-search__icon {
+    position: absolute;
+    top: 50%;
+    left: 10px;
+    width: 16px;
+    height: 16px;
+    color: var(--rlp-sub);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+// 全包唯一一处需要用户用系统输入法打字的原生 input：搜索要能输汉字与拼音，
+// 系统输入法逃不掉；号牌录入那一路仍然全部自绘，不调输入法
+.rlp-search__input {
+    box-sizing: border-box;
+    width: 100%;
+    height: 40px;
+    padding: 0 38px 0 32px;
+    font-family: inherit;
+    font-size: 15px;
+    color: var(--rlp-text);
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--rlp-cell-bg);
+    border: 1px solid transparent;
+    border-radius: 10px;
+    outline: none;
+    &::-webkit-search-cancel-button {
+        // 自己去掉原生叉，否则跟自己的清除按钮叠两层
+        -webkit-appearance: none;
+    }
+}
+
+.rlp-search__input::placeholder {
+    color: var(--rlp-sub);
+}
+
+.rlp-search__input:focus {
+    background: var(--rlp-bg-raise);
+    border-color: var(--rlp-accent);
+}
+
+.rlp-search__clear {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
+    line-height: 1;
+    color: var(--rlp-sub);
+    background: none;
+    border: 0;
+    transform: translateY(-50%);
+    -webkit-tap-highlight-color: transparent;
+}
+
+// 命中数只给读屏用户：搜索是即时过滤，结果卡片就在眼下变，
+// 在框旁挂个数字反而把行搞得拥挤
+.rlp-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+// 搜索结果跳分组，所以上面的分组标题不能再做段落划分 —— 分组名改放到卡片里
+.rlp-picker {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    padding: 12px 14px 16px;
+}
+
+.rlp-type-card {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 66px;
+    padding: 8px 4px;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.3;
+    color: var(--rlp-text);
+    text-align: center;
+    background: var(--rlp-cell-bg);
+    border: 1px solid transparent;
+    border-radius: 8px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+}
+
+.rlp-type-card:active {
+    border-color: var(--rlp-accent);
+}
+
+.rlp-type-card[aria-selected='true'] {
+    color: var(--rlp-accent);
+    background: color-mix(in srgb, var(--rlp-accent) 14%, transparent);
+    border-color: var(--rlp-accent);
+}
+
+.rlp-type-card__group {
+    font-size: 10px;
+    font-style: normal;
+    line-height: 1.2;
+    color: var(--rlp-sub);
+}
+
+// 没搜到时的空态，给一个回到全部类型的出口（不让人对着空抽屉找关闭）；
+// 外框高度是钉住的，所以这里用 min-height 把空态在那块高度里垂直居中
+.rlp-picker__empty {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    min-height: 100%;
+    padding: 44px 20px;
+    font-size: 14px;
+    color: var(--rlp-sub);
+    text-align: center;
+}
+
+.rlp-picker__empty-btn {
+    padding: 6px 14px;
+    font-family: inherit;
+    font-size: 14px;
+    color: var(--rlp-accent);
+    background: none;
+    border: 1px solid var(--rlp-line);
+    border-radius: 999px;
+    -webkit-tap-highlight-color: transparent;
+}
+
+// ── 第二屏顶部：示例牌面 ─────────────────────────────────
+// 示例、格子、键盘、完成按钮要在同一屏看全，所以示例只做一行薄条，
+// 不再像以前那样在类型屏下面堆一大块预览区（要下滑才能看到输入入口）
+.rlp-sample {
+    display: flex;
+    flex: none;
+    gap: 10px;
+    align-items: center;
+    padding: 7px 10px;
+    margin: 2px 14px 0;
+    background: var(--rlp-cell-bg);
+    border-radius: 10px;
+}
+
+.rlp-sample__label {
+    flex: none;
+    font-size: 11px;
+    color: var(--rlp-sub);
+}
+
+.rlp-sample__note {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--rlp-sub);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+// ── 牌面格（编辑态）────────────────────────────────────────────
+.rlp-board {
+    display: flex;
+    flex: none;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    padding: 14px;
+}
+
+.rlp-cell {
+    position: relative;
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    height: 46px;
+    max-width: 46px;
+    min-width: 0;
+    padding: 0;
+    // 输入格与牌面用同一套字体，靠 --rlp-font-family 保持两边一致
+    --rlp-font: var(--rlp-font-family, 'LicensePlate'), 'Bahnschrift', 'DIN Alternate', 'Arial Narrow', Arial, sans-serif;
+    font-family: var(--rlp-font);
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--rlp-text);
+    background: var(--rlp-cell-bg);
+    border: 1px solid var(--rlp-line);
+    border-radius: 6px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+}
+
+// 只读格：固定段由类型带出，视觉上压成浅灰底、不给点击态
+.rlp-cell--fixed {
+    color: var(--rlp-sub);
+    background: none;
+    border-style: dashed;
+}
+
+// 红色标识格（警 / 学 / 挂 / 应急），与真牌一致；深色下走 token 提亮
+.rlp-cell--mark {
+    color: var(--rlp-mark);
+}
+
+.rlp-cell--active {
+    border-color: var(--rlp-accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--rlp-accent) 28%, transparent);
+}
+
+.rlp-cell--bad {
+    color: var(--rlp-mark);
+    border-color: var(--rlp-mark);
+}
+
+// 光标：激活且还没落字的格子里闪一条竖线
+.rlp-cell__caret {
+    width: 2px;
+    height: 22px;
+    background: var(--rlp-accent);
+    animation: rlp-blink 1s steps(2, start) infinite;
+}
+
+@keyframes rlp-blink {
+    0%,
+    50% {
+        opacity: 1;
+    }
+    51%,
+    100% {
+        opacity: 0;
+    }
+}
+
+// 牌面分隔点：CSS 绘制，不用「·」字符（详见 plate.less 同段说明）
+.rlp-board__dot {
+    flex: none;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--rlp-sub);
+}
+
+// 当前槽位说明 + 校验提示，放在牌面下方、键盘上方
+.rlp-hint {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    // 按两行预留高度：提示从「省份简称」换成校验错误文案时会换行，
+    // 这里长几 px 键盘就要往上顶一下，又是一处抖动
+    min-height: 34px;
+    padding: 0 14px 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--rlp-sub);
+}
+
+.rlp-hint--bad {
+    color: var(--rlp-mark);
+}
